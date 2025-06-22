@@ -11,6 +11,80 @@ using Aga.Controls.Tree.NodeControls;
 
 namespace ePubFixer
 {
+
+    public static class IListExtensions
+    {
+        //public static void Sort<T>(this IList<T> list)
+        //{
+        //    if (list is List<T> listImpl)
+        //    {
+        //        listImpl.Sort();
+        //    }
+        //    else
+        //    {
+        //        var copy = new List<T>(list);
+        //        list.Sort();
+        //        Copy(copy, 0, list, 0, list.Count);
+        //    }
+        //}
+
+        //public static void Sort<T>(this IList<T> list, Comparison<T> comparison)
+        //{
+        //    if (list is List<T> listImpl)
+        //    {
+        //        listImpl.Sort(comparison);
+        //    }
+        //    else
+        //    { 
+        //        list.Sort(comparison); 
+        //    }
+        //}
+
+        public static void Sort<T>(this IList<T> list, IComparer<T> comparer)
+        {
+            if (list is List<T> listImpl)
+            {
+                listImpl.Sort(comparer);
+            }
+            else
+            {
+                var copy = new List<T>(list);
+                copy.Sort(comparer);
+                list.Clear();
+                foreach (var element in copy)
+                {
+                    list.Add(element);
+                }
+            }
+        }
+
+        //public static void Sort<T>(this IList<T> list, int index, int count,
+        //    IComparer<T> comparer)
+        //{
+        //    if (list is List<T> listImpl)
+        //    {
+        //        listImpl.Sort(index, count, comparer);
+        //    }
+        //    else
+        //    {
+        //        var range = new List<T>(count);
+        //        for (int i = 0; i < count; i++)
+        //        {
+        //            range.Add(list[index + i]);
+        //        }
+        //        range.Sort(comparer);
+        //        Copy(range, 0, list, index, count);
+        //    }
+        //}
+
+        //private static void Copy<T>(IList<T> sourceList, int sourceIndex, IList<T> destinationList, int destinationIndex, int count)
+        //{
+        //    for (int i = 0; i < count; i++)
+        //    {
+        //        destinationList[destinationIndex + i] = sourceList[sourceIndex + i];
+        //    }
+        //}
+    }
     public abstract partial class BaseForm : Form
     {
         #region Fields
@@ -390,6 +464,24 @@ namespace ePubFixer
         {
             throw new NotImplementedException();
         }
+
+        protected virtual void btnSort_Click(object sender, EventArgs e)
+        {
+            // Sort table of contents items by their chapter name
+            tree.BeginUpdate();
+
+            Model.Nodes.Sort(new MySort());
+            
+            tree.EndUpdate();
+        }
+
+        class MySort : IComparer<Node>
+        {
+            public int Compare(Node x, Node y)
+            {
+                return string.Compare(x.Text, y.Text);
+            }
+        }
         #endregion
 
         #region Status Strip Text
@@ -434,7 +526,7 @@ namespace ePubFixer
             timer.Stop();
             tree.NodeMouseClick += new EventHandler<TreeNodeAdvMouseEventArgs>(tree_NodeMouseClick);
             SetSelectedStatusSrc();
-        } 
+        }
         #endregion
 
         #region Get FileNames
