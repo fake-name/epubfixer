@@ -8,37 +8,130 @@ using System.Windows.Forms;
 using System.Xml.Linq;
 using Aga.Controls.Tree;
 using Aga.Controls.Tree.NodeControls;
+using System.Globalization;
+
+// Natural-ish sorting implementation from https://stackoverflow.com/a/78874525/268006
+// Patched for the old-ass version of .net this project uses.
+public class NumStringComparer : IComparer<string>
+{
+    public static NumStringComparer Ordinal { get; } = new NumStringComparer(CultureInfo.InvariantCulture, CompareOptions.Ordinal);
+    public static NumStringComparer OrdinalIgnoreCase { get; } = new NumStringComparer(CultureInfo.InvariantCulture, CompareOptions.OrdinalIgnoreCase);
+    public static NumStringComparer CurrentCulture { get; } = new NumStringComparer(CultureInfo.CurrentCulture, CompareOptions.None);
+    public static NumStringComparer CurrentCultureIgnoreCase { get; } = new NumStringComparer(CultureInfo.CurrentCulture, CompareOptions.IgnoreCase);
+    public static NumStringComparer InvariantCulture { get; } = new NumStringComparer(CultureInfo.InvariantCulture, CompareOptions.None);
+    public static NumStringComparer InvariantCultureIgnoreCase { get; } = new NumStringComparer(CultureInfo.InvariantCulture, CompareOptions.IgnoreCase);
+
+    public NumStringComparer(CultureInfo culture, CompareOptions options)
+    {
+        Culture = culture;
+        Options = options;
+    }
+
+    public CultureInfo Culture { get; }
+
+    public CompareOptions Options { get; }
+
+    public int Compare(string x, string y)
+    {
+        if (x == null || y == null) return string.Compare(x, y);
+
+        return new Comparison(this, x, y).Compare();
+    }
+
+    struct Comparison
+    {
+        CompareOptions _options;
+        CompareInfo _info;
+        string _x;
+        string _y;
+        int _xPos;
+        int _yPos;
+
+        public Comparison(NumStringComparer c, string x, string y)
+        {
+            _options = c.Options;
+            _info = c.Culture.CompareInfo;
+            _x = x;
+            _y = y;
+            _xPos = 0;
+            _yPos = 0;
+        }
+
+        bool EndReached => _xPos == _x.Length && _yPos == _y.Length;
+
+        public int Compare()
+        {
+            int result = 0;
+
+            while (result == 0 && !EndReached)
+            {
+                result = CompareAt();
+            }
+
+            return result;
+        }
+
+        int CompareAt()
+        {
+            if (_xPos == _x.Length) return -1;
+            if (_yPos == _y.Length) return 1;
+
+            int xFrom = _xPos;
+            int yFrom = _yPos;
+
+            bool xIsNumber = Read(_x, ref _xPos);
+            bool yIsNumber = Read(_y, ref _yPos);
+
+            if (xIsNumber && yIsNumber)
+            {
+                int x = FirstNonZeroDigit(_x, xFrom, _xPos);
+                int y = FirstNonZeroDigit(_y, yFrom, _yPos);
+
+                int xLength = _xPos - x;
+                int yLength = _yPos - y;
+
+                if (xLength != yLength)
+                {
+                    return xLength.CompareTo(yLength);
+                }
+
+                while (x < _xPos)
+                {
+                    char cx = _x[x];
+                    char cy = _y[y];
+                    if (cx != cy) return cx.CompareTo(cy);
+                    x++;
+                    y++;
+                }
+
+                // Equal values - compare total lengths
+                return (_xPos - xFrom).CompareTo(_yPos - yFrom);
+            }
+
+            return _info.Compare(_x, xFrom, _xPos - xFrom, _y, yFrom, _yPos - yFrom, _options);
+        }
+
+        bool Read(string s, ref int pos)
+        {
+            bool isNumber = Char.IsDigit(s[pos++]);
+            while (pos < s.Length && Char.IsDigit(s[pos]) ^ !isNumber) pos++;
+            return isNumber;
+        }
+
+        int FirstNonZeroDigit(string s, int from, int to)
+        {
+            int i = from;
+            while (i < to && s[i] == '0') i++;
+            return i;
+        }
+    }
+}
 
 namespace ePubFixer
 {
 
     public static class IListExtensions
     {
-        //public static void Sort<T>(this IList<T> list)
-        //{
-        //    if (list is List<T> listImpl)
-        //    {
-        //        listImpl.Sort();
-        //    }
-        //    else
-        //    {
-        //        var copy = new List<T>(list);
-        //        list.Sort();
-        //        Copy(copy, 0, list, 0, list.Count);
-        //    }
-        //}
-
-        //public static void Sort<T>(this IList<T> list, Comparison<T> comparison)
-        //{
-        //    if (list is List<T> listImpl)
-        //    {
-        //        listImpl.Sort(comparison);
-        //    }
-        //    else
-        //    { 
-        //        list.Sort(comparison); 
-        //    }
-        //}
 
         public static void Sort<T>(this IList<T> list, IComparer<T> comparer)
         {
@@ -57,33 +150,6 @@ namespace ePubFixer
                 }
             }
         }
-
-        //public static void Sort<T>(this IList<T> list, int index, int count,
-        //    IComparer<T> comparer)
-        //{
-        //    if (list is List<T> listImpl)
-        //    {
-        //        listImpl.Sort(index, count, comparer);
-        //    }
-        //    else
-        //    {
-        //        var range = new List<T>(count);
-        //        for (int i = 0; i < count; i++)
-        //        {
-        //            range.Add(list[index + i]);
-        //        }
-        //        range.Sort(comparer);
-        //        Copy(range, 0, list, index, count);
-        //    }
-        //}
-
-        //private static void Copy<T>(IList<T> sourceList, int sourceIndex, IList<T> destinationList, int destinationIndex, int count)
-        //{
-        //    for (int i = 0; i < count; i++)
-        //    {
-        //        destinationList[destinationIndex + i] = sourceList[sourceIndex + i];
-        //    }
-        //}
     }
     public abstract partial class BaseForm : Form
     {
@@ -479,7 +545,8 @@ namespace ePubFixer
         {
             public int Compare(Node x, Node y)
             {
-                return string.Compare(x.Text, y.Text);
+                return NumStringComparer.Ordinal.Compare(x.Text, y.Text);
+                // return string.Compare(x.Text, y.Text);
             }
         }
         #endregion
